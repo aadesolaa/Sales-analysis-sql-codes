@@ -1,0 +1,232 @@
+COPY pharm FROM 'C:\Users\Public\Pharm.csv' DELIMITER ',' CSV HEADER;
+
+-- Data exploration
+-- a. Table
+SELECT * FROM pharm;
+
+-- b. Product classes
+SELECT DISTINCT product_class FROM pharm;
+
+-- c. Total number of products and per product class
+SELECT COUNT(DISTINCT product_name) FROM pharm;
+
+SELECT product_class, COUNT(DISTINCT product_name) FROM pharm
+GROUP BY product_class
+ORDER BY count;
+
+-- d. Countries the pharmaceutical products are distributed to
+SELECT DISTINCT country FROM pharm;
+
+-- e. Number of cities per country
+SELECT country, COUNT(DISTINCT city) AS city_count FROM pharm
+GROUP BY country;
+
+-- f. Number of distributors?
+SELECT COUNT (DISTINCT distributor) FROM pharm;
+
+-- g. Number of customers
+SELECT COUNT (DISTINCT customer_name) FROM pharm;
+
+-- h. Number of customers to each distributor
+SELECT distributor, COUNT(DISTINCT customer_name) FROM pharm
+GROUP BY distributor
+ORDER BY count DESC;
+
+-- i. Distribution channels and sub-channels
+SELECT channel, sub_channel FROM pharm
+GROUP BY channel, sub_channel;
+
+-- Data cleaning
+-- a. Check for nulls
+SELECT * FROM pharm
+WHERE distributor IS null OR 
+customer_name IS null OR 
+city IS null OR 
+country IS null OR
+latitude IS null OR 
+longitude IS null OR 
+channel IS null OR 
+sub_channel IS null OR 
+product_name IS null OR 
+product_class IS null OR 
+quantity IS null OR 
+price IS null OR 
+sales IS null OR 
+month IS null OR 
+year IS null OR 
+sales_rep IS null OR 
+manager IS null OR 
+sales_team IS null;
+
+-- b. Check if quantity, price and sales columns have zero values.
+SELECT quantity, price, sales FROM pharm
+WHERE quantity = 0 OR
+price = 0 OR
+sales = 0;
+
+-- c. Delete rows with zero quantity and sales
+DELETE FROM pharm
+WHERE quantity = 0;
+
+-- d. The latitude and longitude columsn are not needed for this analysis. 
+-- They are therefore deleted.
+ALTER TABLE pharm
+DROP COLUMN latitude,
+DROP COLUMN longitude;
+
+-- e. Number of rows and columns after data cleaning
+SELECT COUNT(*) FROM pharm
+
+-- Check for number of rows with positive and negative quantity/sales.
+WITH sales_class AS (
+SELECT sales,
+	CASE WHEN sales > 0 THEN 'actual_sales'
+	WHEN sales < 0 THEN 'returns'
+	END AS class
+FROM pharm
+)
+SELECT class, COUNT(class) FROM sales_class
+GROUP BY class
+ORDER BY count DESC;
+
+-- Data analysis
+-- 1. What are the total sales and returns from 2017 to 2020 and in each year?
+-- a. Total sales
+SELECT
+ROUND(SUM(sales)) AS actual_sales_amount
+FROM pharm;
+
+-- b. Sales and returns
+WITH sales_return_amount AS (
+	SELECT sales,
+	CASE
+		WHEN sales > 0 THEN 'sold'
+		WHEN sales < 0 THEN 'returned'
+		END AS sr
+	FROM pharm
+	)
+SELECT sr, ROUND(SUM(sales)) AS amount FROM sales_return_amount
+GROUP BY sr;
+
+-- c. Sales per year
+SELECT year,
+ROUND(SUM(sales)) AS actual_sales_amount
+FROM pharm
+GROUP BY year
+ORDER BY actual_sales_amount;
+
+-- d. Sales and returns per year
+WITH sales_return_amount AS (
+	SELECT sales, year,
+	CASE
+		WHEN sales > 0 THEN 'sold'
+		WHEN sales < 0 THEN 'returned'
+		END AS sr
+	FROM pharm
+	)
+SELECT year,sr, ROUND(SUM(sales)) AS amount FROM sales_return_amount
+GROUP BY sr,year
+ORDER BY amount;
+
+-- 2. What quantities of products were sold and returned each year?
+-- a. Total quantity sold
+SELECT
+ROUND(SUM(quantity)) AS actual_quantity_sold
+FROM pharm;
+
+-- b. Total quantity sold and returned
+WITH sales_return AS (
+	SELECT quantity,
+	CASE
+		WHEN quantity > 0 THEN 'quantity_sold'
+		WHEN quantity < 0 THEN 'quantity_returned'
+		END AS sr
+	FROM pharm
+	)
+SELECT sr, ROUND(SUM(quantity)) AS quantity FROM sales_return
+GROUP BY sr;
+
+-- c. Quantity sold per year
+SELECT year,
+ROUND(SUM(quantity)) AS actual_quantity_sold
+FROM pharm
+GROUP BY year
+ORDER BY actual_quantity_sold;
+
+-- d. Total quantity sold and returned per year
+WITH sales_return AS (
+	SELECT quantity, year,
+	CASE
+		WHEN quantity > 0 THEN 'quantity_sold'
+		WHEN quantity < 0 THEN 'quantity_returned'
+		END AS sr
+	FROM pharm
+	)
+SELECT year,sr, ROUND(SUM(quantity)) AS quantity FROM sales_return
+GROUP BY sr,year
+ORDER BY quantity;
+
+-- 3. What are the total sales for each product class?
+SELECT product_class, ROUND(SUM(sales)) AS sales FROM pharm
+GROUP BY product_class
+ORDER BY sales;
+
+-- 4. Which sales channel and sub-channel have the highest amount of sales?
+SELECT channel, sub_channel, ROUND(SUM(sales)) AS sales FROM pharm
+GROUP BY channel, sub_channel
+ORDER BY channel, sales;
+
+-- 5. Who are the top and bottom 5 distributors?
+-- a. Top 5 distributors
+WITH distributor_sales AS (
+	SELECT distributor, ROUND(SUM(sales)) AS sales FROM pharm
+	GROUP BY distributor
+	)
+SELECT distributor,
+RANK() OVER (ORDER BY sales DESC) 
+FROM distributor_sales
+LIMIT 5;
+
+-- b. Bottom 5 distributors
+WITH distributor_sales AS (
+	SELECT distributor, ROUND(SUM(sales)) AS sales FROM pharm
+	GROUP BY distributor
+	)
+SELECT distributor,
+RANK() OVER (ORDER BY sales) 
+FROM distributor_sales
+LIMIT 5;
+
+-- 6. Who are the top 10 customers?
+WITH customers AS (
+	SELECT customer_name, ROUND(SUM(sales)) AS sales FROM pharm
+	GROUP BY customer_name
+	)
+SELECT customer_name,
+RANK() OVER (ORDER BY sales DESC) 
+FROM customers
+LIMIT 10;
+
+-- 7. Which sales rep, manager, and sales team have the highest amount of sales?
+-- a. Top 3
+SELECT *, 
+rank() OVER (ORDER BY sales DESC) FROM (
+SELECT sales_rep, manager, sales_team, ROUND(SUM(sales)) AS sales
+FROM pharm
+GROUP BY sales_rep, manager, sales_team ) rank
+LIMIT 3;
+
+-- b. Bottom 3
+SELECT *, 
+rank() OVER (ORDER BY sales) FROM (
+SELECT sales_rep, manager, sales_team, ROUND(SUM(sales)) AS sales
+FROM pharm
+GROUP BY sales_rep, manager, sales_team ) rank
+LIMIT 3;
+
+-- 8. What is the total sales per country?
+SELECT country, ROUND(SUM(sales)) AS sales FROM pharm
+GROUP BY country;
+
+-- EXPORT TABLE FOR VIZ
+COPY pharm TO 'C:\Users\Public\Pharmviz.csv' WITH DELIMITER ',' CSV HEADER;
